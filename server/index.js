@@ -2488,10 +2488,14 @@ app.get("/{*path}", (req, res) => {
   res.sendFile(path.join(__dirname, "../dist/index.html"));
 });
 
-app.listen(PORT, () => {
-  console.log(`==================================================`);
-  console.log(` Career GPS Secure Proxy running on port ${PORT}`);
-  console.log(` Environment: Local Development Proxy`);
-  console.log(` Target OpenAI Model: ${OPENAI_MODEL}`);
-  console.log(`==================================================`);
-});
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`==================================================`);
+    console.log(` Career GPS Secure Proxy running on port ${PORT}`);
+    console.log(` Environment: Local Development Proxy`);
+    console.log(` Target OpenAI Model: ${OPENAI_MODEL}`);
+    console.log(`==================================================`);
+  });
+}
+
+export default app;

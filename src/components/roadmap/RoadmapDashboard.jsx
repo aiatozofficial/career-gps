@@ -653,6 +653,117 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
     onReset();
   }
 
+  function handlePrint() {
+    try {
+      const win = window.open("", "_blank");
+      if (!win) {
+        window.print();
+        return;
+      }
+      const esc = (s) => String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+      const stageLabel = getStageLabel ? getStageLabel(profile.stage) : profile.stage;
+      const fieldLabel = getFieldLabel ? getFieldLabel(profile.field) : (profile.field?.type || "");
+      const tierLabel = (tierLabels[financialTier] || financialTier);
+      const milestones = roadmap?.goalsToAchieve?.milestones || [];
+      const courses = filtered?.courses || [];
+      const internships = filtered?.internships || [];
+      const certs = filtered?.certifications || [];
+      const alternates = roadmap?.alternatePaths || [];
+      const have = roadmap?.skillGap?.have || profile.skills || [];
+      const need = roadmap?.skillGap?.need || [];
+      const bridging = roadmap?.skillGap?.bridgingSteps || [];
+      // Build mindmap expanded list for print (same logic as print view)
+      let mindmapHtml = "";
+      try {
+        const scaffold = buildMindmapScaffold(profile, nodeStates, userSelections);
+        const flat = flattenScaffold(scaffold);
+        const nodesForPrint = flat.filter(n => {
+          const st = (nodeStates || {})[n.id] || n.state;
+          if (st === "locked") return false;
+          if (n.isSelectionPoint || n.type === "selection") return false;
+          const c = (nodeCache || {})[n.id];
+          return c && ((c.goals && c.goals.length>0) || (c.achievements && c.achievements.length>0));
+        });
+        if (nodesForPrint.length>0) {
+          mindmapHtml = `<h2 style="font-size:18px;font-weight:800;border-left:4px solid #8b5cf6;padding-left:10px;margin:24px 0 12px">Mindmap — Stage Goals (Expanded)</h2>`;
+          mindmapHtml += nodesForPrint.map(node => {
+            const c = (nodeCache || {})[node.id];
+            const goals = (c.goals||[]).map(g=>`<li style="font-size:12px;margin:4px 0"><span style="color:#059669">✓</span> ${esc(g)}</li>`).join("");
+            const ach = (c.achievements||[]).map(a=>`<li style="font-size:12px;margin:4px 0;color:#92400e">⭐ ${esc(a)}</li>`).join("");
+            const skills = c.skills ? `<p style="font-size:11px;margin-top:6px"><b>Skills:</b> ${esc(c.skills.join(", "))}</p>` : "";
+            return `<div style="border:1px solid #e2e8f0;border-radius:10px;padding:12px;margin-bottom:10px;break-inside:avoid"><h3 style="font-size:13px;font-weight:700">${esc(node.label)} <span style="font-weight:400;color:#64748b">(${esc(node.timeframe)})</span></h3>${c.summary?`<p style="font-size:11px;color:#475569;font-style:italic;margin-top:4px">${esc(c.summary)}</p>`:""}${goals?`<ul style="margin-top:8px;padding-left:16px">${goals}</ul>`:""}${ach?`<ul style="margin-top:8px;padding-left:16px">${ach}</ul>`:""}${skills}</div>`;
+          }).join("");
+        }
+      } catch(e){ mindmapHtml = `<p style="font-size:12px;color:#94a3b8">Mindmap details not yet loaded.</p>`; }
+
+      const coursesHtml = courses.length? courses.map(c=>`<div style="border:1px solid #e2e8f0;border-radius:10px;padding:12px;margin-bottom:8px;break-inside:avoid"><h3 style="font-size:13px;font-weight:700">${esc(c.name)}</h3><p style="font-size:11px;color:#475569">Semester: ${esc(c.semester)}</p><p style="font-size:11px;color:#334155;margin-top:4px">${esc(c.reason)}</p></div>`).join("") : `<p style="font-size:12px;color:#94a3b8;font-style:italic">No courses for current tier/stage.</p>`;
+      const internHtml = internships.length? internships.map(it=>`<div style="border:1px solid #e2e8f0;border-radius:10px;padding:12px;margin-bottom:8px;break-inside:avoid"><h3 style="font-size:13px;font-weight:700">${esc(it.role)}</h3><p style="font-size:11px;color:#475569">When: ${esc(it.when)} • Platforms: ${esc((it.platforms||[]).join(", "))} • ${esc(it.stipendNote)}</p></div>`).join("") : `<p style="font-size:12px;color:#94a3b8;font-style:italic">No internships for current tier.</p>`;
+      const certsHtml = certs.length? certs.map(c=>`<div style="border:1px solid #e2e8f0;border-radius:10px;padding:12px;margin-bottom:8px;break-inside:avoid"><h3 style="font-size:13px;font-weight:700">${esc(c.name)}</h3><p style="font-size:11px;color:#475569">Platform: ${esc(c.platform)} • Cost: ${esc(c.cost)} • Duration: ${esc(c.duration)}</p><p style="font-size:11px;color:#334155;margin-top:4px">${esc(c.impact)}</p></div>`).join("") : `<p style="font-size:12px;color:#94a3b8;font-style:italic">No certifications for current tier.</p>`;
+      const altHtml = alternates.length? alternates.map(a=>`<div style="border:1px solid #e2e8f0;border-radius:10px;padding:12px;margin-bottom:8px;break-inside:avoid"><h3 style="font-size:13px;font-weight:700">${esc(a.title)} <span style="font-weight:400;color:#64748b">(${esc(a.salaryRange)})</span></h3><p style="font-size:11px;color:#475569">Skill Overlap: ${a.skillOverlap}% • Pivot: ${esc(a.pivotRequired)}</p></div>`).join("") : `<p style="font-size:12px;color:#94a3b8">No alternate paths.</p>`;
+      const needStr = need.map(n=> typeof n==="string"? n : (n.skill||JSON.stringify(n))).join(", ");
+      const deep = deepRoadmap;
+      let deepHtml = "";
+      if (deep) {
+        deepHtml = `<h2 style="font-size:18px;font-weight:800;border-left:4px solid #10b981;padding-left:10px;margin:24px 0 12px">Deep Insights — 6-Week Plan & Projects</h2>`;
+        if (deep.weeklyStudyPlan) deepHtml += deep.weeklyStudyPlan.map(w=>`<div style="border:1px solid #e2e8f0;border-radius:10px;padding:12px;margin-bottom:8px;break-inside:avoid"><h3 style="font-size:13px;font-weight:700">${esc(w.week)}: ${esc(w.topic)}</h3><p style="font-size:11px;color:#475569">Resource: ${esc(w.resource)}</p><p style="font-size:11px;margin-top:4px">Task: ${esc(w.actionItem)}</p></div>`).join("");
+        if (deep.targetProjects) deepHtml += `<div style="margin-top:12px">`+deep.targetProjects.map((p,i)=>`<div style="border:1px solid #e2e8f0;border-radius:10px;padding:12px;margin-bottom:8px;break-inside:avoid"><h3 style="font-size:13px;font-weight:700">${esc(p.title)} <span style="font-weight:400;color:#64748b">(${esc(p.techStack)})</span></h3><p style="font-size:11px;color:#334155;margin-top:4px">${esc(p.description)}</p><ol style="font-size:11px;margin-left:18px;margin-top:6px">${(p.phases||[]).map(ph=>`<li>${esc(ph)}</li>`).join("")}</ol></div>`).join("")+`</div>`;
+        if (deep.strategicAdvice) deepHtml += `<p style="font-size:11px;font-style:italic;color:#334155;border-left:3px solid #6ee7b7;padding-left:10px;margin-top:12px">${esc(deep.strategicAdvice)}</p>`;
+      }
+
+      const html = `<!doctype html><html><head><meta charset="utf-8"><title>Career GPS — ${esc(profile.name)} Career Guide</title><style> *{box-sizing:border-box} body{font-family: Inter, -apple-system, Arial, sans-serif; color:#0f172a; margin:0; padding:24px; background:white} h1{font-size:28px} h2{page-break-after:avoid} @media print{ body{padding:0} button{display:none} } </style></head><body>
+      <div style="border-bottom:2px solid #0f172a;padding-bottom:16px;margin-bottom:20px">
+        <h1 style="margin:0">Career GPS — Career Guide</h1>
+        <p style="font-size:12px;color:#475569;margin:4px 0">Generated on ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()} • Career GPS</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;margin-top:10px">
+          <div><b>Name:</b> ${esc(profile.name)}</div>
+          <div><b>Stage:</b> ${esc(stageLabel)}</div>
+          <div><b>Field:</b> ${esc(fieldLabel)}</div>
+          <div><b>Financial Tier:</b> ${esc(tierLabel)}</div>
+          <div style="grid-column:1 / -1"><b>Goal Direction:</b> ${esc(formatGoalType(profile.goal.type))} — ${esc(profile.goal.description)}</div>
+          <div style="grid-column:1 / -1"><b>Skills:</b> ${esc((profile.skills||[]).join(", ")||"None")}</div>
+        </div>
+      </div>
+
+      <h2 style="font-size:18px;font-weight:800;border-left:4px solid #10b981;padding-left:10px;margin:18px 0 12px">Goals to Achieve</h2>
+      <p style="font-size:12px;color:#475569;margin-bottom:10px">${esc(roadmap.goalsToAchieve?.description||"")}</p>
+      <div>${milestones.map(ms=>`<div style="border:1px solid #e2e8f0;border-radius:10px;padding:12px;margin-bottom:10px;break-inside:avoid"><div style="display:flex;justify-content:space-between;gap:8px"><h3 style="font-size:13px;font-weight:700;margin:0">${esc(ms.title)}</h3><span style="font-size:11px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:999px;padding:2px 8px;white-space:nowrap">${esc(ms.timeframe)}</span></div><p style="font-size:11px;color:#334155;margin-top:6px">${esc(ms.detail)}</p>${ms.prerequisites && ms.prerequisites.length?`<ul style="font-size:11px;margin-top:8px;padding-left:16px">${ms.prerequisites.map(pre=>`<li><b>${esc(pre.title)}:</b> ${esc(pre.detail)}</li>`).join("")}</ul>`:""}</div>`).join("")}</div>
+
+      ${mindmapHtml}
+
+      <h2 style="font-size:18px;font-weight:800;border-left:4px solid #0ea5e9;padding-left:10px;margin:24px 0 12px">College Courses</h2>
+      ${coursesHtml}
+
+      <h2 style="font-size:18px;font-weight:800;border-left:4px solid #f97316;padding-left:10px;margin:24px 0 12px">Internships</h2>
+      ${internHtml}
+
+      <h2 style="font-size:18px;font-weight:800;border-left:4px solid #f59e0b;padding-left:10px;margin:24px 0 12px">Certifications</h2>
+      ${certsHtml}
+
+      <h2 style="font-size:18px;font-weight:800;border-left:4px solid #334155;padding-left:10px;margin:24px 0 12px">Alternate Paths</h2>
+      ${altHtml}
+
+      <h2 style="font-size:18px;font-weight:800;border-left:4px solid #059669;padding-left:10px;margin:24px 0 12px">Skill Gap</h2>
+      <div style="font-size:12px;break-inside:avoid">
+        <p><b>Have:</b> ${esc(have.join(", ")||"None")}</p>
+        <p style="margin-top:6px"><b>Need:</b> ${esc(needStr||"None")}</p>
+        ${bridging.length?`<ul style="margin-top:8px;padding-left:16px">${bridging.map(s=>`<li>${esc(s)}</li>`).join("")}</ul>`:""}
+      </div>
+
+      ${deepHtml}
+
+      <div style="border-top:1px solid #cbd5e1;margin-top:24px;padding-top:12px;text-align:center;font-size:11px;color:#64748b">Career GPS • Full Guide Export • Keep building — you are on track!</div>
+      </body></html>`;
+      win.document.open();
+      win.document.write(html);
+      win.document.close();
+      win.focus();
+      setTimeout(()=>{ win.print(); }, 500);
+    } catch(e){
+      console.error("Print failed", e);
+      window.print();
+    }
+  }
+
 
   return (
     <GradientBackground
@@ -660,7 +771,7 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
       overlay={false}
       enableCenterContent={false}
     >
-      <section className="border-b border-black/8 bg-white/55 text-slate-800 backdrop-blur-md">
+      <section className="border-b border-black/8 bg-white/55 text-slate-800 backdrop-blur-md print:hidden">
         <div className="mx-auto flex max-w-[1600px] flex-col gap-5 px-5 py-5 md:px-8 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-teal-700">Career GPS dashboard</p>
@@ -692,7 +803,7 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
             <button
               className="focus-ring rounded-md bg-[#286f8f]/10 border border-[#286f8f]/20 px-4 py-2 text-sm font-semibold text-[#286f8f] hover:bg-[#286f8f]/20 transition transform hover:scale-[1.02] active:scale-[0.98] print:hidden"
               type="button"
-              onClick={() => window.print()}
+              onClick={handlePrint}
             >
               Download PDF
             </button>
@@ -707,23 +818,196 @@ export default function RoadmapDashboard({ profile, roadmap, initialFinancialTie
         </div>
       </section>
 
-      <div className="hidden print:block print:p-8">
-        <h2 className="mb-6 text-2xl font-bold text-ink">Short-Term & Long-Term Goals</h2>
-        <Goals
-          profile={profile}
-          completedGoals={completedGoals}
-          onToggleGoal={handleToggleGoal}
-          nodeCache={nodeCache}
-          nodeStates={nodeStates}
-          userSelections={userSelections}
-          onSelectOption={handleSelectOption}
-          wizardOpenNodeId={wizardOpenNodeId}
-          setWizardOpenNodeId={setWizardOpenNodeId}
-          wizardStep={wizardStep}
-          setWizardStep={setWizardStep}
-          manuallyClosedId={manuallyClosedId}
-          setManuallyClosedId={setManuallyClosedId}
-        />
+      {/* Comprehensive Print View - entire career guide record */}
+      <div className="hidden print:block print:p-6 print:bg-white text-slate-900">
+        <div className="border-b-2 border-slate-900 pb-4 mb-6">
+          <h1 className="text-3xl font-extrabold text-slate-900">Career GPS — Career Guide</h1>
+          <p className="mt-1 text-sm text-slate-600">Generated on {new Date().toLocaleDateString()} at {new Date().toLocaleTimeString()} • 127.0.0.1:5173</p>
+          <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+            <p><span className="font-bold">Name:</span> {profile.name}</p>
+            <p><span className="font-bold">Stage:</span> {getStageLabel(profile.stage)}</p>
+            <p><span className="font-bold">Field:</span> {getFieldLabel(profile.field)}</p>
+            <p><span className="font-bold">Financial Tier:</span> {tierLabels[financialTier] || financialTier}</p>
+            <p className="col-span-2"><span className="font-bold">Goal Direction:</span> {formatGoalType(profile.goal.type)} — {profile.goal.description}</p>
+            <p><span className="font-bold">Skills:</span> {(profile.skills || []).join(", ") || "None"}</p>
+            <p><span className="font-bold">Progress:</span> {(() => { const s = getProgressStats ? null : null; return `${completedGoals.size} goals completed`; })()}</p>
+          </div>
+        </div>
+
+        {/* Goals to Achieve - always expanded */}
+        <div className="mb-6 break-inside-avoid">
+          <h2 className="text-xl font-extrabold text-slate-900 border-l-4 border-emerald-500 pl-3">Goals to Achieve</h2>
+          <p className="mt-2 text-sm text-slate-600">{roadmap.goalsToAchieve?.description}</p>
+          <div className="mt-4 space-y-3">
+            {(roadmap.goalsToAchieve?.milestones || []).map((ms) => (
+              <div key={ms.id} className="border border-slate-200 rounded-lg p-3 break-inside-avoid">
+                <div className="flex justify-between items-start gap-2">
+                  <h3 className="font-bold text-sm text-slate-800">{ms.title}</h3>
+                  <span className="text-xs bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full shrink-0">{ms.timeframe}</span>
+                </div>
+                <p className="mt-1 text-xs text-slate-600 leading-relaxed">{ms.detail}</p>
+                {ms.prerequisites && ms.prerequisites.length > 0 && (
+                  <ul className="mt-2 space-y-1">
+                    {ms.prerequisites.map((pre) => (
+                      <li key={pre.id} className="text-xs text-slate-700 flex gap-1.5"><span>•</span><span><span className="font-semibold">{pre.title}:</span> {pre.detail}</span></li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Mindmap expanded goals (if loaded) */}
+        {(() => {
+          const nodesForPrint = flattenScaffold(buildMindmapScaffold(profile, nodeStates, userSelections)).filter(n => {
+            const st = (nodeStates || {})[n.id] || n.state;
+            if (st === "locked") return false;
+            if (n.isSelectionPoint || n.type === "selection") return false;
+            const c = (nodeCache || {})[n.id];
+            return c && ((c.goals && c.goals.length>0) || (c.achievements && c.achievements.length>0));
+          });
+          if (nodesForPrint.length === 0) return null;
+          return (
+            <div className="mb-6">
+              <h2 className="text-xl font-extrabold text-slate-900 border-l-4 border-violet-500 pl-3">Mindmap — Stage Goals (Expanded)</h2>
+              <div className="mt-4 space-y-3">
+                {nodesForPrint.map(node => {
+                  const c = (nodeCache || {})[node.id];
+                  return (
+                    <div key={node.id} className="border border-slate-200 rounded-lg p-3 break-inside-avoid">
+                      <h3 className="font-bold text-sm text-slate-800">{node.label} <span className="text-xs font-normal text-slate-500">({node.timeframe})</span></h3>
+                      {c.summary && <p className="mt-1 text-xs text-slate-600 italic">{c.summary}</p>}
+                      {c.goals && c.goals.length>0 && (
+                        <ul className="mt-2 space-y-1">
+                          {c.goals.map((g,i) => (
+                            <li key={i} className="text-xs flex gap-1.5"><span className="text-emerald-600">✓</span><span className={completedGoals.has(g) ? "line-through text-slate-400":"text-slate-700"}>{g}</span></li>
+                          ))}
+                        </ul>
+                      )}
+                      {c.achievements && c.achievements.length>0 && (
+                        <ul className="mt-2 space-y-1">
+                          {c.achievements.map((a,i) => <li key={i} className="text-xs text-amber-800 flex gap-1.5"><span>⭐</span><span>{a}</span></li>)}
+                        </ul>
+                      )}
+                      {c.skills && c.skills.length>0 && <p className="mt-2 text-xs"><span className="font-bold">Skills:</span> {c.skills.join(", ")}</p>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Courses */}
+        <div className="mb-6 break-inside-avoid">
+          <h2 className="text-xl font-extrabold text-slate-900 border-l-4 border-ocean pl-3">College Courses</h2>
+          {filtered.courses && filtered.courses.length>0 ? (
+            <div className="mt-3 grid gap-2">
+              {filtered.courses.map(c => (
+                <div key={c.id} className="border border-slate-200 rounded-lg p-3">
+                  <h3 className="font-bold text-sm">{c.name}</h3>
+                  <p className="text-xs text-slate-600">Semester: {c.semester}</p>
+                  <p className="text-xs text-slate-600 mt-1">{c.reason}</p>
+                </div>
+              ))}
+            </div>
+          ) : <p className="text-xs text-slate-500 mt-2 italic">No courses for current financial tier / stage.</p>}
+        </div>
+
+        {/* Internships */}
+        <div className="mb-6 break-inside-avoid">
+          <h2 className="text-xl font-extrabold text-slate-900 border-l-4 border-coral pl-3">Internships</h2>
+          {filtered.internships && filtered.internships.length>0 ? (
+            <div className="mt-3 grid gap-2">
+              {filtered.internships.map(it => (
+                <div key={it.id} className="border border-slate-200 rounded-lg p-3">
+                  <h3 className="font-bold text-sm">{it.role}</h3>
+                  <p className="text-xs text-slate-600">When: {it.when} • Platforms: {(it.platforms||[]).join(", ")} • {it.stipendNote}</p>
+                </div>
+              ))}
+            </div>
+          ) : <p className="text-xs text-slate-500 mt-2 italic">No internships for current tier / stage.</p>}
+        </div>
+
+        {/* Certifications */}
+        <div className="mb-6 break-inside-avoid">
+          <h2 className="text-xl font-extrabold text-slate-900 border-l-4 border-amber-500 pl-3">Certifications</h2>
+          {filtered.certifications && filtered.certifications.length>0 ? (
+            <div className="mt-3 grid gap-2">
+              {filtered.certifications.map(cert => (
+                <div key={cert.id} className="border border-slate-200 rounded-lg p-3">
+                  <h3 className="font-bold text-sm">{cert.name}</h3>
+                  <p className="text-xs text-slate-600">Platform: {cert.platform} • Cost: {cert.cost} • Duration: {cert.duration}</p>
+                  <p className="text-xs text-slate-600 mt-1">{cert.impact}</p>
+                </div>
+              ))}
+            </div>
+          ) : <p className="text-xs text-slate-500 mt-2 italic">No certifications for current tier.</p>}
+        </div>
+
+        {/* Alternate Paths */}
+        <div className="mb-6 break-inside-avoid">
+          <h2 className="text-xl font-extrabold text-slate-900 border-l-4 border-slate-700 pl-3">Alternate Paths</h2>
+          {(roadmap.alternatePaths||[]).length>0 ? (
+            <div className="mt-3 grid gap-2">
+              {(roadmap.alternatePaths||[]).map(alt => (
+                <div key={alt.id} className="border border-slate-200 rounded-lg p-3">
+                  <h3 className="font-bold text-sm">{alt.title} <span className="text-xs font-normal text-slate-500">({alt.salaryRange})</span></h3>
+                  <p className="text-xs text-slate-600">Skill Overlap: {alt.skillOverlap}% • Pivot Required: {alt.pivotRequired}</p>
+                </div>
+              ))}
+            </div>
+          ) : <p className="text-xs text-slate-500 mt-2 italic">No alternate paths.</p>}
+        </div>
+
+        {/* Skill Gap */}
+        <div className="mb-6 break-inside-avoid">
+          <h2 className="text-xl font-extrabold text-slate-900 border-l-4 border-emerald-600 pl-3">Skill Gap</h2>
+          <div className="mt-3 text-xs space-y-2">
+            <p><span className="font-bold">Have:</span> {(roadmap.skillGap?.have||[]).join(", ") || "None"}</p>
+            <p><span className="font-bold">Need:</span> {(roadmap.skillGap?.need||[]).map(n=>n.skill||n).join(", ") || "None"}</p>
+            {(roadmap.skillGap?.bridgingSteps||[]).length>0 && (
+              <ul className="list-disc ml-5 space-y-1">
+                {(roadmap.skillGap.bridgingSteps||[]).map((s,i)=><li key={i}>{s}</li>)}
+              </ul>
+            )}
+          </div>
+        </div>
+
+        {/* Deep Insights if available */}
+        {deepRoadmap && (
+          <div className="mb-6">
+            <h2 className="text-xl font-extrabold text-slate-900 border-l-4 border-emerald-500 pl-3">Deep Insights — 6-Week Plan & Projects</h2>
+            {deepRoadmap.weeklyStudyPlan && (
+              <div className="mt-3 space-y-2">
+                {deepRoadmap.weeklyStudyPlan.map((w,i)=>(
+                  <div key={i} className="border border-slate-200 rounded-lg p-3 break-inside-avoid">
+                    <h3 className="font-bold text-sm">{w.week}: {w.topic}</h3>
+                    <p className="text-xs text-slate-600">Resource: {w.resource}</p>
+                    <p className="text-xs text-slate-700 mt-1">Task: {w.actionItem}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+            {deepRoadmap.targetProjects && (
+              <div className="mt-3 grid gap-2">
+                {deepRoadmap.targetProjects.map((p,i)=>(
+                  <div key={i} className="border border-slate-200 rounded-lg p-3 break-inside-avoid">
+                    <h3 className="font-bold text-sm">{p.title} <span className="text-xs font-normal text-slate-500">({p.techStack})</span></h3>
+                    <p className="text-xs text-slate-600 mt-1">{p.description}</p>
+                    <ol className="list-decimal ml-5 text-xs mt-1 space-y-1">{(p.phases||[]).map((ph,idx)=><li key={idx}>{ph}</li>)}</ol>
+                  </div>
+                ))}
+              </div>
+            )}
+            {deepRoadmap.strategicAdvice && <p className="mt-3 text-xs italic text-slate-700 border-l-2 border-emerald-300 pl-3">{deepRoadmap.strategicAdvice}</p>}
+          </div>
+        )}
+
+        <div className="border-t border-slate-300 pt-3 mt-6 text-center text-xs text-slate-500">
+          Career GPS • Full Guide Export • Page 1 of 1 • Keep building — you are on track!
+        </div>
       </div>
 
       <section className="mx-auto grid max-w-[1600px] gap-5 px-5 py-5 md:px-8 lg:grid-cols-[240px_minmax(0,1fr)_280px] print:hidden">

@@ -1524,5 +1524,19 @@ input {
   animation: fluidGradientMove 15s ease infinite !important;
 }
 
+/* ===== Print overrides — full career guide PDF ===== */
+@media print {
+  @page { margin: 12mm; }
+  body {
+    background: white !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  /* Hide non-print chrome already handled by Tailwind print:hidden, but ensure backgrounds are light */
+  /* Prevent collapsed goals from hiding in print — already rendered expanded in print-only block */
+  /* Avoid page breaks inside cards */
+  .break-inside-avoid { break-inside: avoid !important; }
+}
+
 
 

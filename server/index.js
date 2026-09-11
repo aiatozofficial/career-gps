@@ -128,8 +128,8 @@ const careerChatSchema = z.object({
     content: z.string().trim().min(1, "Message content is required")
   })).min(1, "At least one message is required"),
   profile: profileSchema,
-  roadmap: z.object({}).passthrough().optional(),
-  resumeAnalysis: z.object({}).passthrough().optional()
+  roadmap: z.object({}).passthrough().nullable().optional(),
+  resumeAnalysis: z.object({}).passthrough().nullable().optional()
 }).passthrough();
 
 const marketIntelligenceSchema = z.object({
@@ -1361,9 +1361,19 @@ app.post("/api/market-intelligence", validateRequest(marketIntelligenceSchema), 
     }
 
     if (!genAI) {
-      return res.status(503).json({
-        error: "OpenAI API client is not configured.",
-        details: "The OPENAI_API_KEY environment variable is missing."
+      console.warn("[Backend] OpenAI API client missing. Returning mock market intelligence.");
+      return res.json({
+        demandLevel: "HIGH",
+        avgSalary: "₹6,00,000 - ₹11,00,000 per annum",
+        trendingSkills: ["Python", "SQL", "Git", "React.js", "Docker"],
+        topCompanies: ["TCS", "Infosys", "Wipro", "Cognizant", "Tech Mahindra"],
+        jobListings: [
+          { title: "Junior Python Developer Intern", company: "Cognizant Technology Solutions", location: "Bengaluru (Hybrid)", salary: "₹15,000/month", url: "https://internshala.com" },
+          { title: "Associate SQL Analyst", company: "Infosys Ltd", location: "Hyderabad", salary: "₹4,50,000/annum", url: "https://naukri.com" }
+        ],
+        marketInsights: "Hiring velocity remains high for candidates with verifiable coding experience. Standard corporate teams prioritize candidates who can show public Git portfolios and have completed foundational NASSCOM/SWAYAM certifications.",
+        isMock: true,
+        warning: "OpenAI API not configured. Serving local fallback data."
       });
     }
 
@@ -1501,9 +1511,20 @@ app.post("/api/career-chat", validateRequest(careerChatSchema), async (req, res)
     }
 
     if (!genAI) {
-      return res.status(503).json({
-        error: "OpenAI API client is not configured.",
-        details: "The OPENAI_API_KEY environment variable is missing."
+      console.warn("[Backend] OpenAI API client missing. Returning mock chat response.");
+      return res.json({
+        response: `Hello! I am currently operating in **High-Fidelity AI Mock Mode** because your OpenAI API key is not configured. 
+
+Based on your profile (**${profile?.goal?.description || "your career goal"}**) and target goals, I recommend focusing on your core **roadmap milestones**, practicing daily, building a public GitHub/portfolio, and pursuing free certifications (SWAYAM/NPTEL) appropriate to your budget tier.
+
+Ask me any specific career query — for example about skills, certifications, or internships — and I will guide you!`,
+        suggestedActions: [
+          "How can I improve my skills for my target role?",
+          "What projects should I host on GitHub?",
+          "Curate a list of free certifications"
+        ],
+        isMock: true,
+        warning: "OpenAI API not configured. Serving local fallback data."
       });
     }
 
@@ -2048,7 +2069,9 @@ app.post("/api/node-content", validateRequest(nodeContentSchema), async (req, re
       return res.status(400).json({ error: "profile, nodeId, and nodeType are required." });
     }
     if (!genAI) {
-      return res.status(503).json({ error: "OpenAI API not configured." });
+      console.warn("[Backend] OpenAI API client missing. Returning offline mock node content for:", nodeId);
+      const mockContent = getOfflineMockNodeContent(nodeId, nodeLabel || nodeId, profile);
+      return res.json(mockContent);
     }
 
     const stage = profile.stage || "UNDERGRADUATE";
@@ -2214,7 +2237,16 @@ app.post("/api/checkpoint", validateRequest(checkpointSchema), async (req, res) 
       return res.status(400).json({ error: "profile is required." });
     }
     if (!genAI) {
-      return res.status(503).json({ error: "OpenAI API not configured." });
+      console.warn("[Backend] OpenAI API client missing. Returning mock checkpoint data.");
+      const careerGoal_ = profile?.goal?.description || "your career goal";
+      return res.json({
+        narrative: `You have made great progress on your journey toward becoming a ${careerGoal_}. The skills and experiences you have gathered so far form a strong foundation. Keep pushing forward — you are on track!`,
+        skills_earned: completedSkills || [],
+        certifications: completedCerts || [],
+        internships: completedInternships || [],
+        mini_resume: `${profile?.name || "Student"}\nCareer Goal: ${careerGoal_}\nStage: ${profile?.stage || ""}\nSkills: ${(completedSkills || []).join(", ")}`,
+        isMock: true
+      });
     }
 
     const careerGoal = profile.goal?.description || "their career goal";
@@ -2291,7 +2323,20 @@ app.post("/api/init-roadmap", validateRequest(profileSchema), async (req, res) =
       return res.status(400).json({ error: "Invalid profile data. Name and goal description are required." });
     }
     if (!genAI) {
-      return res.status(503).json({ error: "OpenAI API client is not configured." });
+      console.warn("[Backend] OpenAI API client missing. Returning mock init-roadmap.");
+      return res.json({
+        goalsToAchieve: {
+          description: `Your custom pathway to becoming a ${profile.goal?.description || "Professional"}.`,
+          milestones: [{ id: "node-root-ms-1", title: `Adapt to ${profile.stage}`, detail: `Focus on mastering the core principles at your current stage.`, timeframe: "NOW", phase: "goalsToAchieve", prerequisites: [] }]
+        },
+        collegeCourses: [],
+        internships: [],
+        certifications: [],
+        alternatePaths: [],
+        decisionTree: { id: "node-root", label: "You Are Here", type: "decision", month: "Now", detail: "Start of your path.", financialTiers: ["LOW", "MEDIUM", "HIGH"], status: "in_progress", children: [] },
+        skillGap: { have: profile.skills || [], need: [], bridgingSteps: ["Begin with the starting milestone."] },
+        isMock: true
+      });
     }
 
     const stage = profile.stage || "UNDERGRADUATE";
